@@ -1,0 +1,109 @@
+version: '3.8'
+
+volumes:
+    notesapp: {}
+    prometheus-vol: {}
+    grafana-vol: {}
+    
+    
+networks:
+    web-network:
+        driver: bridge
+
+services:
+    notes-web:
+        build:
+            context: ./notes-app
+        container_name: "notes-app"   
+        ports:
+            - "8000:8000"
+        volumes:
+            - "notesapp"
+        networks:
+            - web-network 
+    grafana:
+        image: grafana/grafana-enterprise
+        container_name: grafana
+        ports:
+        - "3000:3000"
+        volumes:
+        - grafana-vol:/var/lib/grafana
+        - ./data/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+        - ./data/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+        networks:
+        - web-network
+        restart: unless-stopped
+
+    prometheus:
+        image: prom/prometheus:latest
+        container_name: prometheus
+        ports:
+        - "9090:9090"
+        volumes:
+        - prometheus-vol:/prometheus         #This line mounts the prometheus.yml file from your local filesystem
+        - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro  #This line mounts the prometheus.yml file from your local filesystem (or project directory) into the /etc/prometheus/prometheus.yml path inside the container.Prometheus requires a configuration file to know which targets to scrape for metrics
+        networks:
+        - web-network
+        restart: unless-stopped
+        depends_on:
+            - node-exporter
+            - cadvisor                    
+  
+
+    node-exporter:
+        image: prom/node-exporter:latest
+        container_name: node-exporter
+        restart: unless-stopped
+        volumes:
+        - /proc:/host/proc:ro
+        - /sys:/host/sys:ro
+        - /:/rootfs:ro
+        command:
+        - '--path.procfs=/host/proc'
+        - '--path.rootfs=/rootfs'
+        - '--path.sysfs=/host/sys'
+        - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+        expose:
+        - 9100
+        ports:
+        - "9100:9100"        
+        networks:
+        - web-network
+
+    cadvisor:
+        image: gcr.io/cadvisor/cadvisor:latest
+        container_name: cadvisor
+        ports:
+        - "8080:8080"
+        volumes:
+        - /:/rootfs:ro
+        - /var/run:/var/run:rw
+        - /sys:/sys:ro
+        - /var/lib/docker/:/var/lib/docker:ro
+        networks:
+        - web-network
+        restart: unless-stopped
+                    
+    loki:
+        image: grafana/loki:latest
+        container_name: loki
+        ports:
+        - "3100:3100"
+        volumes:
+        - ./loki-config.yml:/etc/loki/local-config.yml
+        networks:
+        - web-network
+        restart: unless-stopped
+
+    promtail:
+        image: grafana/promtail:latest
+        container_name: promtail
+        volumes:
+        - /var/log:/var/log
+        - ./promtail-config.yaml:/etc/promtail/config.yml
+        networks:
+        - web-network
+        restart: unless-stopped
+
+     
+
